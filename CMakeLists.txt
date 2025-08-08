@@ -87,7 +87,7 @@ include_directories(${Boost_INCLUDE_DIRS})
 #####################################################################################################
 
 # include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/cgal/include)
-find_package (CGAL REQUIRED ) #PATHS ${CMAKE_CURRENT_SOURCE_DIR}/external/cgal NO_DEFAULT_PATH)
+find_package (CGAL REQUIRED PATHS ${CMAKE_CURRENT_SOURCE_DIR}/external/cgal NO_DEFAULT_PATH)
 
 #message(${CGAL_INCLUDE_DIRS})
 include_directories(${CGAL_INCLUDE_DIRS})
