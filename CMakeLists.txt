@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.5)
 project(CGAL-apps LANGUAGES CXX)
 
 ##TCLAP
-set (TCLAP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../external/tclap/include)
+set (TCLAP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/tclap/include)
 include_directories (${TCLAP_DIR})
 
 find_package (Boost)
@@ -74,28 +74,31 @@ if (NOT Boost_FOUND AND MSVC)
     endif()
 endif()
 
-# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../external/CGAL-5.6.2/include)
-find_package (CGAL REQUIRED PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../../external/CGAL-5.6.2 NO_DEFAULT_PATH)
+# include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/cgal/include)
+find_package (CGAL REQUIRED ) #PATHS ${CMAKE_CURRENT_SOURCE_DIR}/external/cgal NO_DEFAULT_PATH)
 
-message(${CGAL_INCLUDE_DIRS})
+#message(${CGAL_INCLUDE_DIRS})
 include_directories(${CGAL_INCLUDE_DIRS})
 
-set (LIBLAS_DIR ${CGAL_INCLUDE_DIRS}/../external/LAStools/LASlib)  ### https://github.com/CGAL/LAStools.git
-include_directories(${LIBLAS_DIR}/inc)
-message (${LIBLAS_DIR}/inc)
+set (LIBLAS_DIR ${CGAL_INCLUDE_DIRS}/external/LAStools/LASlib)  ### https://github.com/CGAL/LAStools.git
+#include_directories(${LIBLAS_DIR}/inc)
+#message (${LIBLAS_DIR}/inc)
 
 set (LIBZIP_DIR ${CGAL_INCLUDE_DIRS}/../external/LAStools/LASzip)
-include_directories(${LIBZIP_DIR}/src)
-message (${LIBZIP_DIR}/src)
+#include_directories(${LIBZIP_DIR}/src)
+#message (${LIBZIP_DIR}/src)
 
+message(Boost: ${Boost_INCLUDE_DIRS})
 include_directories(${Boost_INCLUDE_DIRS})
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../external/cinolib/external/eigen)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/external/eigen)
 
-add_executable(${PROJECT_NAME}-shape-detection-ransac main-ransac.cpp)
-add_executable(${PROJECT_NAME}-shape-detection-reg-growing main-fit.cpp)
-add_executable(${PROJECT_NAME}-scaline-normals main-scanline-normals.cpp)
-add_executable(${PROJECT_NAME}-shape-detection-reg-growing-cyl main-fit-cylinder.cpp)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-#target_link_libraries(${PROJECT_NAME}-ransac PUBLIC CGAL::CGAL CGAL::CGAL_Core)
-target_link_libraries(${PROJECT_NAME}-scaline-normals PUBLIC ${LIBLAS_DIR}/../build-Windows/Release/las.lib)
+#add_executable(${PROJECT_NAME}-shape-detection-ransac src/main-ransac.cpp)
+add_executable(${PROJECT_NAME}-shape-detection-reg-growing src/main-fit.cpp)
+#add_executable(${PROJECT_NAME}-scaline-normals src/main-scanline-normals.cpp)
+#add_executable(${PROJECT_NAME}-shape-detection-reg-growing-cyl main-fit-cylinder.cpp)
+
+target_link_libraries(${PROJECT_NAME}-shape-detection-reg-growing PUBLIC CGAL::CGAL )
+#target_link_libraries(${PROJECT_NAME}-scaline-normals PUBLIC ${LIBLAS_DIR}/../build-Windows/Release/las.lib)
