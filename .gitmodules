@@ -1,0 +1,6 @@
+[submodule "external/cgal"]
+	path = external/cgal
+	url = https://github.com/CGAL/cgal.git
+[submodule "external/tclap"]
+	path = external/tclap
+	url = https://github.com/mirror/tclap.git
