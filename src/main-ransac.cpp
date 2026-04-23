@@ -1,12 +1,19 @@
 #include <tclap/CmdLine.h>
 
+#include <cerrno>
+#include <direct.h>
 #include <fstream>
 #include <iostream>
+#include <algorithm>
+#include <cctype>
 #include <CGAL/property_map.h>
 #include <CGAL/IO/read_points.h>
+#include <CGAL/IO/read_las_points.h>
 #include <CGAL/Point_with_normal_3.h>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Shape_detection/Efficient_RANSAC.h>
+#include <CGAL/jet_estimate_normals.h>
+#include <CGAL/mst_orient_normals.h>
 // Type declarations.
 typedef CGAL::Exact_predicates_inexact_constructions_kernel  Kernel;
 typedef Kernel::FT                                           FT;
@@ -22,6 +29,99 @@ typedef CGAL::Shape_detection::Cylinder<Traits>         Cylinder;
 typedef CGAL::Shape_detection::Plane<Traits>            Plane;
 typedef CGAL::Shape_detection::Sphere<Traits>           Sphere;
 typedef CGAL::Shape_detection::Torus<Traits>            Torus;
+
+namespace {
+
+bool create_directory_if_needed(const std::string& directory)
+{
+    if (directory.empty()) {
+        return true;
+    }
+
+    std::string normalized = directory;
+    std::replace(normalized.begin(), normalized.end(), '/', '\\');
+
+    std::string partial;
+    for (std::size_t index = 0; index < normalized.size(); ++index) {
+        const char current = normalized[index];
+        partial.push_back(current);
+
+        const bool is_separator = current == '\\';
+        const bool is_last = index + 1 == normalized.size();
+        if (!is_separator && !is_last) {
+            continue;
+        }
+
+        while (!partial.empty() && partial.back() == '\\') {
+            if (partial.size() == 3 && partial[1] == ':') {
+                break;
+            }
+            partial.pop_back();
+        }
+
+        if (partial.empty() || partial == ".") {
+            continue;
+        }
+
+        if (_mkdir(partial.c_str()) != 0 && errno != EEXIST) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool has_las_extension(std::string filename)
+{
+    std::transform(filename.begin(), filename.end(), filename.begin(),
+        [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    return filename.size() >= 4 && filename.substr(filename.size() - 4) == ".las";
+}
+
+bool load_points_with_normals(const std::string& input_filename, Pwn_vector& points)
+{
+    if (!has_las_extension(input_filename)) {
+        return CGAL::IO::read_points(
+            input_filename,
+            std::back_inserter(points),
+            CGAL::parameters::point_map(Point_map()).
+            normal_map(Normal_map()));
+    }
+
+    std::ifstream input(input_filename, std::ios::binary);
+    if (!input) {
+        return false;
+    }
+
+    if (!CGAL::IO::read_LAS_with_properties(
+            input,
+            std::back_inserter(points),
+            CGAL::IO::make_las_point_reader(Point_map()))) {
+        return false;
+    }
+
+    if (points.empty()) {
+        return true;
+    }
+
+    constexpr unsigned int k_neighbors = 24;
+    CGAL::jet_estimate_normals<CGAL::Parallel_if_available_tag>(
+        points,
+        k_neighbors,
+        CGAL::parameters::point_map(Point_map()).
+        normal_map(Normal_map()));
+
+    const auto unoriented_points_begin = CGAL::mst_orient_normals(
+        points,
+        k_neighbors,
+        CGAL::parameters::point_map(Point_map()).
+        normal_map(Normal_map()));
+    points.erase(unoriented_points_begin, points.end());
+
+    return !points.empty();
+}
+
+} // namespace
 
 
 int main (int argc, char** argv)
@@ -124,16 +224,12 @@ int main (int argc, char** argv)
     // Points with normals.
     Pwn_vector points;
     // Load point set from a file.
-    if (!CGAL::IO::read_points(
-            input_filename,
-            std::back_inserter(points),
-            CGAL::parameters::point_map(Point_map()).
-            normal_map(Normal_map()))) {
+    if (!load_points_with_normals(input_filename, points)) {
         std::cerr << "Error: cannot read file " << input_filename << std::endl;
         return EXIT_FAILURE;
     }
 
-    std::cout << "Efficient RANSAC" << std::endl;
+    std::cout << points.size() << " points loaded." << std::endl;
 
     // Instantiate shape detection engine.
     Efficient_ransac ransac;
@@ -141,11 +237,16 @@ int main (int argc, char** argv)
     ransac.set_input(points);
 
     // Register shapes for detection.
+    if (detect_plane)
     ransac.add_shape_factory<Plane>();
-    ransac.add_shape_factory<Sphere>();
-    ransac.add_shape_factory<Cylinder>();
-    ransac.add_shape_factory<Cone>();
-    ransac.add_shape_factory<Torus>();
+    if (detect_sphere)
+        ransac.add_shape_factory<Sphere>();
+    if (detect_cylinder)
+        ransac.add_shape_factory<Cylinder>();
+    if (detect_cone)
+        ransac.add_shape_factory<Cone>();
+    if (detect_torus)
+        ransac.add_shape_factory<Torus>();
 
     // Set parameters for shape detection.
     Efficient_ransac::Parameters parameters;
@@ -175,6 +276,11 @@ int main (int argc, char** argv)
     unsigned int plane_counter =0;
     unsigned int cyl_counter =0;
 
+    if (!create_directory_if_needed(output_directory)) {
+        std::cerr << "Error: cannot create output directory " << output_directory << std::endl;
+        return EXIT_FAILURE;
+    }
+
     while (it != shapes.end()) {
 
         std::ofstream output_file;
@@ -182,7 +288,7 @@ int main (int argc, char** argv)
         // Get specific parameters depending on the detected shape.
         if (Plane* plane = dynamic_cast<Plane*>(it->get())) {
 
-            output_file.open("Plane-" + std::to_string(plane_counter++) + ".xyz");
+            output_file.open(output_directory + "/Plane-" + std::to_string(plane_counter++) + ".xyz");
 
             Kernel::Vector_3 normal = plane->plane_normal();
             std::cout << "Plane with normal " << normal << std::endl;
@@ -193,14 +299,42 @@ int main (int argc, char** argv)
 
         } else if (Cylinder* cyl = dynamic_cast<Cylinder*>(it->get())) {
 
-            output_file.open("Cylinder-" + std::to_string(plane_counter++) + ".xyz");
+            output_file.open(output_directory + "/Cylinder-" + std::to_string(cyl_counter++) + ".xyz");
 
-            Kernel::Line_3 axis = cyl->axis();
+            const auto axis = cyl->axis();
             FT radius = cyl->radius();
 
             std::cout << "Cylinder with axis "
                       << axis << " and radius " << radius << std::endl;
 
+        } else if (Sphere* sphere = dynamic_cast<Sphere*>(it->get())) {
+
+            Kernel::Point_3 center = sphere->center();
+            FT radius = sphere->radius();
+
+            std::cout << "Sphere with center "
+                      << center << " and radius " << radius << std::endl;
+
+        } else if (Cone* cone = dynamic_cast<Cone*>(it->get())) {
+
+            const auto axis = cone->axis();
+            FT angle = cone->angle();
+
+            std::cout << "Cone with axis "
+                      << axis << " and angle " << angle << std::endl;
+
+        } else if (Torus* torus = dynamic_cast<Torus*>(it->get())) {
+
+            const auto center = torus->center();
+            const auto axis = torus->axis();
+            FT major_radius = torus->major_radius();
+            FT minor_radius = torus->minor_radius();
+
+            std::cout << "Torus with center "
+                      << center << ", axis " << axis
+                      << ", major radius " << major_radius
+                      << " and minor radius " << minor_radius
+                      << std::endl; 
         } else {
 
             // Print the parameters of the detected shape.
